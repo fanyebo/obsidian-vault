@@ -1,0 +1,14 @@
+# 忽略 Obsidian 工作区配置（个人插件/主题偏好，不跨设备同步）
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/appearance.json
+.obsidian/app.json
+.obsidian/core-plugins.json
+.obsidian/community-plugins.json
+
+# 忽略同步产生的冲突文件
+*.sync-conflict-*
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
