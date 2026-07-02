@@ -39,3 +39,53 @@ def safe_save(file, upload_dir: Path):
 ```
 
 **原则**：完全不信任客户端文件名，服务端 UUID 生成唯一文件名。
+
+## 更新 2026-07-02
+
+### 文件内容验证（补齐短板）
+
+仅 UUID 重命名只能防**路径遍历**，不能防以下攻击：
+
+| 攻击类型 | UUID 方案效果 | 说明 |
+|---------|:---:|------|
+| 扩展名欺骗 `shell.php` | ❌ | 虽然文件名变了，但 `.php` 后缀仍保留，若上传目录在 webroot 下可被直接执行 |
+| 文件内容（webshell） | ❌ | 文件内容本身可以是 `<?php system($_GET['cmd']); ?>` |
+| 双扩展名 `shell.php.jpg` | ⚠️ | `Path().suffix` 只取最后一个 `.jpg`，但某些服务器配置下仍可能执行 |
+| 大小炸弹 | ❌ | 无上限校验，攻击者可上传超大文件耗尽磁盘 |
+
+### 完整防护方案
+
+```python
+import uuid, magic  # pip install python-magic
+from pathlib import Path
+
+ALLOWED_MIME = {
+    'image/jpeg': '.jpg', 'image/png': '.png',
+    'image/gif': '.gif', 'application/pdf': '.pdf',
+}
+MAX_SIZE = 16 * 1024 * 1024  # 16MB
+
+def secure_save(file_storage, upload_dir: Path) -> Path:
+    # 1. 大小校验
+    file_storage.seek(0, 2)
+    if file_storage.tell() > MAX_SIZE:
+        raise ValueError("File too large")
+    file_storage.seek(0)
+
+    # 2. magic byte 识别真实类型（不信任扩展名）
+    mime = magic.from_buffer(file_storage.read(2048), mime=True)
+    file_storage.seek(0)
+    ext = ALLOWED_MIME.get(mime)
+    if not ext:
+        raise ValueError(f"Type {mime} not allowed")
+
+    # 3. UUID + 白名单扩展名（完全不信任原文件名）
+    name = uuid.uuid4().hex + ext
+    path = upload_dir / name
+
+    # 4. 确保上传目录不在 webroot 下（或禁用脚本执行）
+    file_storage.save(str(path))
+    return path
+```
+
+**核心原则升级**：不信任原文件名 + **magic byte 判断真实类型** + 白名单扩展名 + 大小限制 + 禁止上传目录脚本执行。
